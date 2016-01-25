@@ -7,7 +7,6 @@ import java.util.HashMap;
 import com.fasterxml.jackson.core.*;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.annotation.JacksonStdImpl;
-import com.fasterxml.jackson.databind.jsonFormatVisitors.JsonArrayFormatVisitor;
 import com.fasterxml.jackson.databind.jsonFormatVisitors.JsonFormatVisitorWrapper;
 import com.fasterxml.jackson.databind.jsonFormatVisitors.JsonFormatTypes;
 import com.fasterxml.jackson.databind.jsontype.TypeSerializer;
@@ -167,26 +166,10 @@ public class StdArraySerializers
 
         @Override
         public void acceptJsonFormatVisitor(JsonFormatVisitorWrapper visitor, JavaType typeHint)
-                throws JsonMappingException
+            throws JsonMappingException
         {
-            if (visitor != null) {
-                JsonArrayFormatVisitor v2 = visitor.expectArrayFormat(typeHint);
-                if (v2 != null) {
-                    v2.itemsFormat(JsonFormatTypes.BOOLEAN);
-                }
-            }
+            visitArrayFormat(visitor, typeHint, JsonFormatTypes.BOOLEAN);
         }
-    }
-
-    /**
-     * @deprecated Since 2.6 use the main-level implementation, base class of this class
-     */
-    @Deprecated
-    @JacksonStdImpl
-    public static class ByteArraySerializer
-        extends com.fasterxml.jackson.databind.ser.std.ByteArraySerializer
-    {
-        public ByteArraySerializer() { super(); }
     }
 
     @JacksonStdImpl
@@ -277,14 +260,9 @@ public class StdArraySerializers
         
         @Override
         public void acceptJsonFormatVisitor(JsonFormatVisitorWrapper visitor, JavaType typeHint)
-                throws JsonMappingException
+            throws JsonMappingException
         {
-            if (visitor != null) {
-                JsonArrayFormatVisitor v2 = visitor.expectArrayFormat(typeHint);
-                if (v2 != null) {
-                    v2.itemsFormat(JsonFormatTypes.INTEGER);
-                }
-            }
+            visitArrayFormat(visitor, typeHint, JsonFormatTypes.INTEGER);
         }
     }
 
@@ -355,14 +333,9 @@ public class StdArraySerializers
         
         @Override
         public void acceptJsonFormatVisitor(JsonFormatVisitorWrapper visitor, JavaType typeHint)
-                throws JsonMappingException
+            throws JsonMappingException
         {
-            if (visitor != null) {
-                JsonArrayFormatVisitor v2 = visitor.expectArrayFormat(typeHint);
-                if (v2 != null) {
-                    v2.itemsFormat(JsonFormatTypes.STRING);
-                }
-            }
+            visitArrayFormat(visitor, typeHint, JsonFormatTypes.STRING);
         }
     }
 
@@ -451,12 +424,7 @@ public class StdArraySerializers
         @Override
         public void acceptJsonFormatVisitor(JsonFormatVisitorWrapper visitor, JavaType typeHint) throws JsonMappingException
         {
-            if (visitor != null) {
-                JsonArrayFormatVisitor v2 = visitor.expectArrayFormat(typeHint);
-                if (v2 != null) {
-                    v2.itemsFormat(JsonFormatTypes.INTEGER);
-                }
-            }
+            visitArrayFormat(visitor, typeHint, JsonFormatTypes.INTEGER);
         }
     }
 
@@ -547,14 +515,9 @@ public class StdArraySerializers
 
         @Override
         public void acceptJsonFormatVisitor(JsonFormatVisitorWrapper visitor, JavaType typeHint)
-                throws JsonMappingException
+            throws JsonMappingException
         {
-            if (visitor != null) {
-                JsonArrayFormatVisitor v2 = visitor.expectArrayFormat(typeHint);
-                if (v2 != null) {
-                    v2.itemsFormat(JsonFormatTypes.NUMBER);
-                }
-            }
+            visitArrayFormat(visitor, typeHint, JsonFormatTypes.NUMBER);
         }
     }
 
@@ -581,7 +544,7 @@ public class StdArraySerializers
         public JsonSerializer<?> _withResolved(BeanProperty prop,Boolean unwrapSingle) {
             return new FloatArraySerializer(this, prop, _valueTypeSerializer, unwrapSingle);
         }
-        
+
         @Override
         public JavaType getContentType() {
             return VALUE_TYPE;
@@ -645,12 +608,7 @@ public class StdArraySerializers
         @Override
         public void acceptJsonFormatVisitor(JsonFormatVisitorWrapper visitor, JavaType typeHint) throws JsonMappingException
         {
-            if (visitor != null) {
-                JsonArrayFormatVisitor v2 = visitor.expectArrayFormat(typeHint);
-                if (v2 != null) {
-                    v2.itemsFormat(JsonFormatTypes.NUMBER);
-                }
-            }
+            visitArrayFormat(visitor, typeHint, JsonFormatTypes.NUMBER);
         }
     }
 
@@ -739,12 +697,7 @@ public class StdArraySerializers
         public void acceptJsonFormatVisitor(JsonFormatVisitorWrapper visitor, JavaType typeHint)
             throws JsonMappingException
         {
-            if (visitor != null) {
-                JsonArrayFormatVisitor v2 = visitor.expectArrayFormat(typeHint);
-                if (v2 != null) {
-                    v2.itemsFormat(JsonFormatTypes.NUMBER);
-                }
-            }
+            visitArrayFormat(visitor, typeHint, JsonFormatTypes.NUMBER);
         }
     }
 }

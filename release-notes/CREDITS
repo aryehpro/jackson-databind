@@ -355,10 +355,49 @@ Ievgen Pianov (pyanoveugen@github)
   * Reported #989: Deserialization from "{}" to java.lang.Object causes "out of END_OBJECT token" error
    (2.6.3)
 
+Jayson Minard (apatrida@github)
+  * Reported #1005: Synthetic constructors confusing Jackson data binding
+   (2.6.4)
+
+David Bakin (david-bakin@github)
+  * Reported #1013: `@JsonUnwrapped` is not treated as assuming `@JsonProperty("")`
+   (2.6.4)
+  * Suggested #1011: Change ObjectWriter::withAttributes() to take a Map with some kind of wildcard types
+   (2.7.0)
+
+Dmitry Romantsov (DmRomantsov@github)
+  * Reported #1036: Problem with case-insensitive deserialization
+   (2.6.4)
+
 Miles Kaufmann (milesk-amzn@github)
   * Reported #432: `StdValueInstantiator` unwraps exceptions, losing context
+   (2.7.0)
+
+Thomas Mortagne (tmortagne@github)
+  * Suggested #857: Add support for java.beans.Transient
+   (2.7.0)
+
+Jonas Konrad (yawkat@github)
+  * Suggested #905: Add support for `@ConstructorProperties`
    (2.7.0)
 
 Jirka Kremser (Jiri-Kremser@github)
   * Suggested #924: SequenceWriter.writeAll() could accept Iterable
    (2.7.0)
+
+Daniel Mischler (danielmischler@github)
+  * Requested #963: Add PropertyNameStrategy `KEBAB_CASE`
+   (2.7.0)
+
+Shumpei Akai (flexfrank@github)
+  * Reported #978: ObjectMapper#canSerialize(Object.class) returns false even though
+   FAIL_ON_EMPTY_BEANS is disabled
+   (2.7.0)
+
+Hugo Wood (hgwood@github)
+  * Contributed #1010: Support for array delegator
+   (2.7.0)
+
+Julian Hyde (julianhyde@github)
+  * Reported #1083: Field in base class is not recognized, when using `@JsonType.defaultImpl`
+   (2.7.1)

@@ -172,6 +172,15 @@ public class AnnotationIntrospectorPair
         return str;
     }
 
+    @Override
+    public String findClassDescription(AnnotatedClass ac) {
+        String str = _primary.findClassDescription(ac);
+        if ((str == null) || str.isEmpty()) {
+            str = _secondary.findClassDescription(ac);
+        }
+        return str;
+    }
+
     /*
     /******************************************************
     /* Property auto-detection
@@ -334,9 +343,10 @@ public class AnnotationIntrospectorPair
     }
 
     @Override
-    public JsonInclude.Value findPropertyInclusion(Annotated a) {
+    public JsonInclude.Value findPropertyInclusion(Annotated a)
+    {
         JsonInclude.Value v2 = _secondary.findPropertyInclusion(a);
-        JsonInclude.Value v1 = _secondary.findPropertyInclusion(a);
+        JsonInclude.Value v1 = _primary.findPropertyInclusion(a);
 
         if (v2 == null) { // shouldn't occur but
             return v1;
@@ -394,11 +404,15 @@ public class AnnotationIntrospectorPair
         objectIdInfo = _primary.findObjectReferenceInfo(ann, objectIdInfo);
         return objectIdInfo;
     }
-    
+
     @Override
     public JsonFormat.Value findFormat(Annotated ann) {
-        JsonFormat.Value r = _primary.findFormat(ann);
-        return (r == null) ? _secondary.findFormat(ann) : r;
+        JsonFormat.Value v1 = _primary.findFormat(ann);
+        JsonFormat.Value v2 = _secondary.findFormat(ann);
+        if (v2 == null) { // shouldn't occur but just in case
+            return v1;
+        }
+        return v2.withOverrides(v1);
     }
 
     @Override
@@ -453,10 +467,20 @@ public class AnnotationIntrospectorPair
         return JsonProperty.Access.AUTO;
     }
 
+    @Override // since 2.7
+    public AnnotatedMethod resolveSetterConflict(MapperConfig<?> config,
+            AnnotatedMethod setter1, AnnotatedMethod setter2)
+    {
+        AnnotatedMethod res = _primary.resolveSetterConflict(config, setter1, setter2);
+        if (res == null) {
+            res = _secondary.resolveSetterConflict(config, setter1, setter2);
+        }
+        return res;
+    }
+
     // // // Serialization: type refinements
 
-    // since 2.7
-    @Override
+    @Override // since 2.7
     public JavaType refineSerializationType(MapperConfig<?> config,
             Annotated a, JavaType baseType) throws JsonMappingException
     {

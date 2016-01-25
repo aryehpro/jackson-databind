@@ -114,7 +114,9 @@ public class BeanDeserializerFactory
         /* Or, for abstract types, may have alternate means for resolution
          * (defaulting, materialization)
          */
-        if (type.isAbstract()) {
+        // 29-Nov-2015, tatu: Also, filter out calls to primitive types, they are
+        //    not something we could materialize anything for
+        if (type.isAbstract() && !type.isPrimitive()) {
             // Let's make it possible to materialize abstract types.
             JavaType concreteType = materializeAbstractType(ctxt, type, beanDesc);
             if (concreteType != null) {
@@ -179,18 +181,16 @@ public class BeanDeserializerFactory
             JavaType type, BeanDescription beanDesc)
         throws JsonMappingException
     {
-        final JavaType abstractType = beanDesc.getType();
-        // [JACKSON-502]: Now it is possible to have multiple resolvers too,
-        //   as they are registered via module interface.
+        // May have multiple resolvers, call in precedence order until one returns non-null
         for (AbstractTypeResolver r : _factoryConfig.abstractTypeResolvers()) {
-            JavaType concrete = r.resolveAbstractType(ctxt.getConfig(), abstractType);
+            JavaType concrete = r.resolveAbstractType(ctxt.getConfig(), beanDesc);
             if (concrete != null) {
                 return concrete;
             }
         }
         return null;
     }
-    
+
     /*
     /**********************************************************
     /* Public construction method beyond DeserializerFactory API:

@@ -11,6 +11,7 @@ import com.fasterxml.jackson.annotation.ObjectIdGenerator;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;
 import com.fasterxml.jackson.annotation.ObjectIdResolver;
 import com.fasterxml.jackson.core.*;
+import com.fasterxml.jackson.core.JsonParser.NumberType;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.deser.impl.*;
 import com.fasterxml.jackson.databind.deser.std.StdDelegatingDeserializer;
@@ -71,13 +72,19 @@ public abstract class BeanDeserializerBase
      * is passed (via updateValue())
      */
     protected final ValueInstantiator _valueInstantiator;
-    
+
     /**
      * Deserializer that is used iff delegate-based creator is
      * to be used for deserializing from JSON Object.
      */
     protected JsonDeserializer<Object> _delegateDeserializer;
-    
+
+    /**
+     * Deserializer that is used iff array-delegate-based creator
+     * is to be used for deserializing from JSON Object.
+     */
+    protected JsonDeserializer<Object> _arrayDelegateDeserializer;
+
     /**
      * If the bean needs to be instantiated using constructor
      * or factory method
@@ -433,7 +440,7 @@ public abstract class BeanDeserializerBase
 
             // May already have deserializer from annotations, if so, skip:
             if (!prop.hasValueDeserializer()) {
-                // [Issue#125]: allow use of converters
+                // [databind#125]: allow use of converters
                 JsonDeserializer<?> deser = findConvertingDeserializer(ctxt, prop);
                 if (deser == null) {
                     deser = findDeserializer(ctxt, prop.getType(), prop);
@@ -451,14 +458,14 @@ public abstract class BeanDeserializerBase
                 }
             }
 
-            // [JACKSON-235]: need to link managed references with matching back references
+            // Need to link managed references with matching back references
             prop = _resolveManagedReferenceProperty(ctxt, prop);
 
-            // issue #351: need to wrap properties that require object id resolution.
+            // [databind#351[: need to wrap properties that require object id resolution.
             if (!(prop instanceof ManagedReferenceProperty)) {
                 prop = _resolvedObjectIdProperty(ctxt, prop);
             }
-            // [JACKSON-132]: support unwrapped values (via @JsonUnwrapped)
+            // Support unwrapped values (via @JsonUnwrapped)
             SettableBeanProperty u = _resolveUnwrappedProperty(ctxt, prop);
             if (u != null) {
                 prop = u;
@@ -472,7 +479,7 @@ public abstract class BeanDeserializerBase
                 _beanProperties.remove(prop);
                 continue;
             }
-            // [JACKSON-594]: non-static inner classes too:
+            // non-static inner classes too:
             prop = _resolveInnerClassValuedProperty(ctxt, prop);
             if (prop != origProp) {
                 _beanProperties.replace(prop);
@@ -526,22 +533,20 @@ public abstract class BeanDeserializerBase
                         +": value instantiator ("+_valueInstantiator.getClass().getName()
                         +") returned true for 'canCreateUsingDelegate()', but null for 'getDelegateType()'");
             }
-            AnnotatedWithParams delegateCreator = _valueInstantiator.getDelegateCreator();
-            // Need to create a temporary property to allow contextual deserializers:
-            BeanProperty.Std property = new BeanProperty.Std(TEMP_PROPERTY_NAME,
-                    delegateType, null, _classAnnotations, delegateCreator,
-                    PropertyMetadata.STD_OPTIONAL);
+            _delegateDeserializer = _findDelegateDeserializer(ctxt, delegateType,
+                    _valueInstantiator.getDelegateCreator());
+        }
 
-            TypeDeserializer td = delegateType.getTypeHandler();
-            if (td == null) {
-                td = ctxt.getConfig().findTypeDeserializer(delegateType);
+        // and array-delegate-based constructor:
+        if (_valueInstantiator.canCreateUsingArrayDelegate()) {
+            JavaType delegateType = _valueInstantiator.getArrayDelegateType(ctxt.getConfig());
+            if (delegateType == null) {
+                throw new IllegalArgumentException("Invalid array-delegate-creator definition for "+_beanType
+                        +": value instantiator ("+_valueInstantiator.getClass().getName()
+                        +") returned true for 'canCreateUsingArrayDelegate()', but null for 'getArrayDelegateType()'");
             }
-            JsonDeserializer<Object> dd = findDeserializer(ctxt, delegateType, property);
-            if (td != null) {
-                td = td.forProperty(property);
-                dd = new TypeWrappedDeserializer(td, dd);
-            }
-            _delegateDeserializer = dd;
+            _arrayDelegateDeserializer = _findDelegateDeserializer(ctxt, delegateType,
+                    _valueInstantiator.getArrayDelegateCreator());
         }
 
         // And now that we know CreatorProperty instances are also resolved can finally create the creator:
@@ -563,6 +568,26 @@ public abstract class BeanDeserializerBase
         // may need to disable vanilla processing, if unwrapped handling was enabled...
         _vanillaProcessing = _vanillaProcessing && !_nonStandardCreation;
     }
+
+    private JsonDeserializer<Object> _findDelegateDeserializer(DeserializationContext ctxt, JavaType delegateType,
+            AnnotatedWithParams delegateCreator) throws JsonMappingException {
+        // Need to create a temporary property to allow contextual deserializers:
+        BeanProperty.Std property = new BeanProperty.Std(TEMP_PROPERTY_NAME,
+                delegateType, null, _classAnnotations, delegateCreator,
+                PropertyMetadata.STD_OPTIONAL);
+
+        TypeDeserializer td = delegateType.getTypeHandler();
+        if (td == null) {
+            td = ctxt.getConfig().findTypeDeserializer(delegateType);
+        }
+        JsonDeserializer<Object> dd = findDeserializer(ctxt, delegateType, property);
+        if (td != null) {
+            td = td.forProperty(property);
+            return new TypeWrappedDeserializer(td, dd);
+        }
+        return dd;
+    }
+
 
     /**
      * Helper method that can be used to see if specified property is annotated
@@ -982,7 +1007,7 @@ public abstract class BeanDeserializerBase
                 if (t == JsonToken.START_OBJECT) {
                     t = p.nextToken();
                 }
-                if (t == JsonToken.FIELD_NAME && _objectIdReader.maySerializeAsObject()
+                if ((t == JsonToken.FIELD_NAME) && _objectIdReader.maySerializeAsObject()
                         && _objectIdReader.isValidReferencePropertyName(p.getCurrentName(), p)) {
                     return deserializeFromObjectId(p, ctxt);
                 }
@@ -1182,9 +1207,9 @@ public abstract class BeanDeserializerBase
     @SuppressWarnings("incomplete-switch")
     public Object deserializeFromDouble(JsonParser p, DeserializationContext ctxt) throws IOException
     {
-        switch (p.getNumberType()) {
-        case FLOAT: // no separate methods for taking float...
-        case DOUBLE:
+        NumberType t = p.getNumberType();
+        // no separate methods for taking float...
+        if ((t == NumberType.DOUBLE) || (t == NumberType.FLOAT)) {
             if (_delegateDeserializer != null) {
                 if (!_valueInstantiator.canCreateFromDouble()) {
                     Object bean = _valueInstantiator.createUsingDelegate(ctxt, _delegateDeserializer.deserialize(p, ctxt));
@@ -1223,9 +1248,21 @@ public abstract class BeanDeserializerBase
 
     public Object deserializeFromArray(JsonParser p, DeserializationContext ctxt) throws IOException
     {
+        if (_arrayDelegateDeserializer != null) {
+            try {
+                Object bean = _valueInstantiator.createUsingArrayDelegate(ctxt, _arrayDelegateDeserializer.deserialize(p, ctxt));
+                if (_injectables != null) {
+                    injectValues(ctxt, bean);
+                }
+                return bean;
+            } catch (Exception e) {
+                wrapInstantiationProblem(e, ctxt);
+            }
+        }
+        // fallback to non-array delegate
         if (_delegateDeserializer != null) {
             try {
-                Object bean = _valueInstantiator.createUsingDelegate(ctxt, _delegateDeserializer.deserialize(p, ctxt));
+                Object bean = _valueInstantiator.createUsingArrayDelegate(ctxt, _delegateDeserializer.deserialize(p, ctxt));
                 if (_injectables != null) {
                     injectValues(ctxt, bean);
                 }
@@ -1256,19 +1293,20 @@ public abstract class BeanDeserializerBase
         throw ctxt.mappingException(handledType());
     }
 
-    public Object deserializeFromEmbedded(JsonParser jp, DeserializationContext ctxt) throws IOException
+    public Object deserializeFromEmbedded(JsonParser p, DeserializationContext ctxt)
+        throws IOException
     {
         // First things first: id Object Id is used, most likely that's it; specifically,
         // true for UUIDs when written as binary (with Smile, other binary formats)
         if (_objectIdReader != null) {
-            return deserializeFromObjectId(jp, ctxt);
+            return deserializeFromObjectId(p, ctxt);
         }
 
         // TODO: maybe add support for ValueInstantiator, embedded?
         
-        return jp.getEmbeddedObject();
+        return p.getEmbeddedObject();
     }
-    
+
     /*
     /**********************************************************
     /* Overridable helper methods
@@ -1276,7 +1314,7 @@ public abstract class BeanDeserializerBase
      */
 
     protected void injectValues(DeserializationContext ctxt, Object bean)
-        throws IOException, JsonProcessingException
+        throws IOException
     {
         for (ValueInjector injector : _injectables) {
             injector.inject(ctxt, bean);
@@ -1291,11 +1329,11 @@ public abstract class BeanDeserializerBase
     @SuppressWarnings("resource")
     protected Object handleUnknownProperties(DeserializationContext ctxt,
             Object bean, TokenBuffer unknownTokens)
-        throws IOException, JsonProcessingException
+        throws IOException
     {
         // First: add closing END_OBJECT as marker
         unknownTokens.writeEndObject();
-        
+
         // note: buffer does NOT have starting START_OBJECT
         JsonParser bufferParser = unknownTokens.asParser();
         while (bufferParser.nextToken() != JsonToken.END_OBJECT) {
@@ -1311,22 +1349,22 @@ public abstract class BeanDeserializerBase
      * Helper method called for an unknown property, when using "vanilla"
      * processing.
      */
-    protected void handleUnknownVanilla(JsonParser jp, DeserializationContext ctxt,
+    protected void handleUnknownVanilla(JsonParser p, DeserializationContext ctxt,
             Object bean, String propName)
-        throws IOException, JsonProcessingException
+        throws IOException
     {
         if (_ignorableProps != null && _ignorableProps.contains(propName)) {
-            handleIgnoredProperty(jp, ctxt, bean, propName);
+            handleIgnoredProperty(p, ctxt, bean, propName);
         } else if (_anySetter != null) {
             try {
                // should we consider return type of any setter?
-                _anySetter.deserializeAndSet(jp, ctxt, bean, propName);
+                _anySetter.deserializeAndSet(p, ctxt, bean, propName);
             } catch (Exception e) {
                 wrapAndThrow(e, bean, propName, ctxt);
             }
         } else {
             // Unknown: let's call handler method
-            handleUnknownProperty(jp, ctxt, bean, propName);         
+            handleUnknownProperty(p, ctxt, bean, propName);         
         }
     }
 
@@ -1335,20 +1373,20 @@ public abstract class BeanDeserializerBase
      * setter, any-setter or field, and thus can not be assigned.
      */
     @Override
-    protected void handleUnknownProperty(JsonParser jp, DeserializationContext ctxt,
+    protected void handleUnknownProperty(JsonParser p, DeserializationContext ctxt,
             Object beanOrClass, String propName)
-        throws IOException, JsonProcessingException
+        throws IOException
     {
         if (_ignoreAllUnknown) {
-            jp.skipChildren();
+            p.skipChildren();
             return;
         }
         if (_ignorableProps != null && _ignorableProps.contains(propName)) {
-            handleIgnoredProperty(jp, ctxt, beanOrClass, propName);
+            handleIgnoredProperty(p, ctxt, beanOrClass, propName);
         }
         // Otherwise use default handling (call handler(s); if not
         // handled, throw exception or skip depending on settings)
-        super.handleUnknownProperty(jp, ctxt, beanOrClass, propName);
+        super.handleUnknownProperty(p, ctxt, beanOrClass, propName);
     }
 
     /**
@@ -1357,14 +1395,14 @@ public abstract class BeanDeserializerBase
      * 
      * @since 2.3
      */
-    protected void handleIgnoredProperty(JsonParser jp, DeserializationContext ctxt,
+    protected void handleIgnoredProperty(JsonParser p, DeserializationContext ctxt,
             Object beanOrClass, String propName)
-        throws IOException, JsonProcessingException
+        throws IOException
     {
         if (ctxt.isEnabled(DeserializationFeature.FAIL_ON_IGNORED_PROPERTIES)) {
-            throw IgnoredPropertyException.from(jp, beanOrClass, propName, getKnownPropertyNames());
+            throw IgnoredPropertyException.from(p, beanOrClass, propName, getKnownPropertyNames());
         }
-        jp.skipChildren();
+        p.skipChildren();
     }
     
     /**
@@ -1374,14 +1412,14 @@ public abstract class BeanDeserializerBase
      * class; either way, we may have more specific deserializer to use
      * for handling it.
      *
-     * @param jp (optional) If not null, parser that has more properties to handle
+     * @param p (optional) If not null, parser that has more properties to handle
      *   (in addition to buffered properties); if null, all properties are passed
      *   in buffer
      */
     @SuppressWarnings("resource")
-    protected Object handlePolymorphic(JsonParser jp, DeserializationContext ctxt,                                          
+    protected Object handlePolymorphic(JsonParser p, DeserializationContext ctxt,                                          
             Object bean, TokenBuffer unknownTokens)
-        throws IOException, JsonProcessingException
+        throws IOException
     {  
         // First things first: maybe there is a more specific deserializer available?
         JsonDeserializer<Object> subDeser = _findSubclassDeserializer(ctxt, bean, unknownTokens);
@@ -1394,8 +1432,8 @@ public abstract class BeanDeserializerBase
                 bean = subDeser.deserialize(p2, ctxt, bean);
             }
             // Original parser may also have some leftovers
-            if (jp != null) {
-                bean = subDeser.deserialize(jp, ctxt, bean);
+            if (p != null) {
+                bean = subDeser.deserialize(p, ctxt, bean);
             }
             return bean;
         }
@@ -1404,8 +1442,8 @@ public abstract class BeanDeserializerBase
             bean = handleUnknownProperties(ctxt, bean, unknownTokens);
         }
         // and/or things left to process via main parser?
-        if (jp != null) {
-            bean = deserialize(jp, ctxt, bean);
+        if (p != null) {
+            bean = deserialize(p, ctxt, bean);
         }
         return bean;
     }
@@ -1416,7 +1454,7 @@ public abstract class BeanDeserializerBase
      */
     protected JsonDeserializer<Object> _findSubclassDeserializer(DeserializationContext ctxt,
             Object bean, TokenBuffer unknownTokens)
-        throws IOException, JsonProcessingException
+        throws IOException
     {  
         JsonDeserializer<Object> subDeser;
 

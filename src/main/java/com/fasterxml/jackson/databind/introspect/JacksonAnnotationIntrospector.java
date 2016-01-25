@@ -1,5 +1,7 @@
 package com.fasterxml.jackson.databind.introspect;
 
+import java.beans.ConstructorProperties;
+import java.beans.Transient;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.util.*;
@@ -30,6 +32,44 @@ public class JacksonAnnotationIntrospector
 {
     private static final long serialVersionUID = 1L;
 
+    @SuppressWarnings("unchecked")
+    private final static Class<? extends Annotation>[] ANNOTATIONS_TO_INFER_SER = (Class<? extends Annotation>[])
+            new Class<?>[] {
+        JsonSerialize.class,
+        JsonView.class,
+        JsonFormat.class,
+        JsonTypeInfo.class,
+        JsonRawValue.class,
+        JsonUnwrapped.class,
+        JsonBackReference.class,
+        JsonManagedReference.class
+    };
+
+    @SuppressWarnings("unchecked")
+    private final static Class<? extends Annotation>[] ANNOTATIONS_TO_INFER_DESER = (Class<? extends Annotation>[])
+            new Class<?>[] {
+        JsonDeserialize.class,
+        JsonView.class,
+        JsonFormat.class,
+        JsonTypeInfo.class,
+        JsonUnwrapped.class,
+        JsonBackReference.class,
+        JsonManagedReference.class
+    };
+
+    private static final Java7Support _jdk7Helper;
+    static {
+        Java7Support x = null;
+        try {
+            x = Java7Support.class.newInstance();
+        } catch (Throwable t) {
+            // 24-Nov-2015, tatu: Should we log or not?
+            java.util.logging.Logger.getLogger(JacksonAnnotationIntrospector.class.getName())
+                .warning("Unable to load JDK7 annotation types; will have to skip");
+        }
+        _jdk7Helper = x;
+    }
+    
     /**
      * Since introspection of annotation types is a performance issue in some
      * use cases (rare, but do exist), let's try a simple cache to reduce
@@ -116,8 +156,8 @@ public class JacksonAnnotationIntrospector
         return value.name();
     }
 
-    @Override
-    public  String[] findEnumValues(Class<?> enumType, Enum<?>[] enumValues, String[] names) {
+    @Override // since 2.7
+    public String[] findEnumValues(Class<?> enumType, Enum<?>[] enumValues, String[] names) {
         HashMap<String,String> expl = null;
         for (Field f : ClassUtil.getDeclaredFields(enumType)) {
             if (!f.isEnumConstant()) {
@@ -222,14 +262,20 @@ public class JacksonAnnotationIntrospector
     {
         JsonNaming ann = _findAnnotation(ac, JsonNaming.class);
         return (ann == null) ? null : ann.value();
-    } 
+    }
+
+    @Override
+    public String findClassDescription(AnnotatedClass ac) {
+        JsonClassDescription ann = _findAnnotation(ac, JsonClassDescription.class);
+        return (ann == null) ? null : ann.value();
+    }
 
     /*
     /**********************************************************
     /* Property auto-detection
     /**********************************************************
      */
-    
+
     @Override
     public VisibilityChecker<?> findAutoDetectVisibility(AnnotatedClass ac,
         VisibilityChecker<?> checker)
@@ -368,6 +414,34 @@ public class JacksonAnnotationIntrospector
     {
         JsonView ann = _findAnnotation(a, JsonView.class);
         return (ann == null) ? null : ann.value();
+    }
+
+    @Override // since 2.7
+    public AnnotatedMethod resolveSetterConflict(MapperConfig<?> config,
+            AnnotatedMethod setter1, AnnotatedMethod setter2)
+    {
+        Class<?> cls1 = setter1.getRawParameterType(0);
+        Class<?> cls2 = setter2.getRawParameterType(0);
+        
+        // First: prefer primitives over non-primitives
+        // 11-Dec-2015, tatu: TODO, perhaps consider wrappers for primitives too?
+        if (cls1.isPrimitive()) {
+            if (!cls2.isPrimitive()) {
+                return setter1;
+            }
+        } else if (cls2.isPrimitive()) {
+            return setter2;
+        }
+        
+        if (cls1 == String.class) {
+            if (cls2 != String.class) {
+                return setter1;
+            }
+        } else if (cls2 == String.class) {
+            return setter2;
+        }
+
+        return null;
     }
 
     /*
@@ -778,24 +852,22 @@ public class JacksonAnnotationIntrospector
     @Override
     public PropertyName findNameForSerialization(Annotated a)
     {
-        String name = null;
-
         JsonGetter jg = _findAnnotation(a, JsonGetter.class);
         if (jg != null) {
-            name = jg.value();
-        } else {
-            JsonProperty pann = _findAnnotation(a, JsonProperty.class);
-            if (pann != null) {
-                name = pann.value();
-            } else if (_hasAnnotation(a, JsonSerialize.class)
-                    || _hasAnnotation(a, JsonView.class)
-                    || _hasAnnotation(a, JsonRawValue.class)) {
-                name = "";
-            } else {
-                return null;
-            }
+            return PropertyName.construct(jg.value());
         }
-        return PropertyName.construct(name);
+        JsonProperty pann = _findAnnotation(a, JsonProperty.class);
+        if (pann != null) {
+            return PropertyName.construct(pann.value());
+        }
+        PropertyName ctorName = _findConstructorName(a);
+        if (ctorName != null) {
+            return ctorName;
+        }
+        if (_hasOneOf(a, ANNOTATIONS_TO_INFER_SER)) {
+            return PropertyName.USE_DEFAULT;
+        }
+        return null;
     }
 
     @Override
@@ -931,32 +1003,24 @@ public class JacksonAnnotationIntrospector
     @Override
     public PropertyName findNameForDeserialization(Annotated a)
     {
-        String name;
-
         // @JsonSetter has precedence over @JsonProperty, being more specific
         // @JsonDeserialize implies that there is a property, but no name
         JsonSetter js = _findAnnotation(a, JsonSetter.class);
         if (js != null) {
-            name = js.value();
-        } else {
-            JsonProperty pann = _findAnnotation(a, JsonProperty.class);
-            if (pann != null) {
-                name = pann.value();
-                /* 22-Apr-2014, tatu: Should figure out a better way to do this, but
-                 *   it's actually bit tricky to do it more efficiently (meta-annotations
-                 *   add more lookups; AnnotationMap costs etc)
-                 */
-            } else if (_hasAnnotation(a, JsonDeserialize.class)
-                    || _hasAnnotation(a, JsonView.class)
-                    || _hasAnnotation(a, JsonUnwrapped.class) // [#442]
-                    || _hasAnnotation(a, JsonBackReference.class)
-                    || _hasAnnotation(a, JsonManagedReference.class)) {
-                    name = "";
-            } else {
-                return null;
-            }
+            return PropertyName.construct(js.value());
         }
-        return PropertyName.construct(name);
+        JsonProperty pann = _findAnnotation(a, JsonProperty.class);
+        if (pann != null) {
+            return PropertyName.construct(pann.value());
+        }
+        PropertyName ctorName = _findConstructorName(a);
+        if (ctorName != null) {
+            return ctorName;
+        }
+        if (_hasOneOf(a, ANNOTATIONS_TO_INFER_DESER)) {
+            return PropertyName.USE_DEFAULT;
+        }
+        return null;
     }
     
     @Override
@@ -986,7 +1050,18 @@ public class JacksonAnnotationIntrospector
          * to this method getting called)
          */
          JsonCreator ann = _findAnnotation(a, JsonCreator.class);
-         return (ann != null && ann.mode() != JsonCreator.Mode.DISABLED);
+         if (ann != null) {
+             return (ann.mode() != JsonCreator.Mode.DISABLED);
+         }
+         if (a instanceof AnnotatedConstructor) {
+             if (_jdk7Helper != null) {
+                 Boolean b = _jdk7Helper.hasCreatorAnnotation(a);
+                 if (b != null) {
+                     return b.booleanValue();
+                 }
+             }
+         }
+         return false;
     }
 
     @Override
@@ -1004,7 +1079,16 @@ public class JacksonAnnotationIntrospector
     protected boolean _isIgnorable(Annotated a)
     {
         JsonIgnore ann = _findAnnotation(a, JsonIgnore.class);
-        return (ann != null && ann.value());
+        if (ann != null) {
+            return ann.value();
+        }
+        if (_jdk7Helper != null) {
+            Boolean b = _jdk7Helper.findTransient(a);
+            if (b != null) {
+                return b.booleanValue();
+            }
+        }
+        return false;
     }
 
     protected Class<?> _classIfExplicit(Class<?> cls) {
@@ -1027,6 +1111,24 @@ public class JacksonAnnotationIntrospector
             return PropertyName.construct(localName);
         }
         return PropertyName.construct(localName, namespace);
+    }
+
+    protected PropertyName _findConstructorName(Annotated a)
+    {
+        if (a instanceof AnnotatedParameter) {
+            AnnotatedParameter p = (AnnotatedParameter) a;
+            AnnotatedWithParams ctor = p.getOwner();
+
+            if (ctor != null) {
+                if (_jdk7Helper != null) {
+                    PropertyName name = _jdk7Helper.findConstructorName(p);
+                    if (name != null) {
+                        return name;
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -1106,5 +1208,64 @@ public class JacksonAnnotationIntrospector
      */
     protected StdTypeResolverBuilder _constructNoTypeResolverBuilder() {
         return StdTypeResolverBuilder.noTypeInfoBuilder();
+    }
+
+    /*
+    /**********************************************************
+    /* Helper classes
+    /**********************************************************
+     */
+
+    /**
+     * To support Java7-incomplete platforms, we will offer support for JDK 7
+     * annotations through this class, loaded dynamically; if loading fails,
+     * support will be missing.
+     */
+    private static class Java7Support
+    {
+        @SuppressWarnings("unused") // compiler warns, just needed side-effects
+        private final Class<?> _bogus;
+
+        @SuppressWarnings("unused") // compiler warns; called via Reflection
+        public Java7Support() {
+            // Trigger loading of annotations that only JDK 7 has...
+            Class<?> cls = Transient.class;
+            cls = ConstructorProperties.class;
+            _bogus = cls;
+        }
+        
+        public Boolean findTransient(Annotated a) {
+            Transient t = a.getAnnotation(Transient.class);
+            if (t != null) {
+                return t.value();
+            }
+            return null;
+        }
+
+        public Boolean hasCreatorAnnotation(Annotated a) {
+            ConstructorProperties props = a.getAnnotation(ConstructorProperties.class);
+            // 08-Nov-2015, tatu: One possible check would be to ensure there is at least
+            //    one name iff constructor has arguments. But seems unnecessary for now.
+            if (props != null) {
+                return Boolean.TRUE;
+            }
+            return null;
+        }
+
+        public PropertyName findConstructorName(AnnotatedParameter p)
+        {
+            AnnotatedWithParams ctor = p.getOwner();
+            if (ctor != null) {
+                ConstructorProperties props = ctor.getAnnotation(ConstructorProperties.class);
+                if (props != null) {
+                    String[] names = props.value();
+                    int ix = p.getIndex();
+                    if (ix < names.length) {
+                        return PropertyName.construct(names[ix]);
+                    }
+                }
+            }
+            return null;
+        }
     }
 }

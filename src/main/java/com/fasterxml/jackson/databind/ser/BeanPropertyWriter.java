@@ -36,7 +36,7 @@ import com.fasterxml.jackson.databind.util.NameTransformer;
 @JacksonStdImpl // since 2.6. NOTE: sub-classes typically are not
 public class BeanPropertyWriter
     extends PropertyWriter // which extends `ConcreteBeanPropertyBase`
-    implements java.io.Serializable // since 2.6.2
+    implements java.io.Serializable // since 2.6
 {
     // As of 2.7
     private static final long serialVersionUID = 1L;
@@ -582,11 +582,17 @@ public class BeanPropertyWriter
     */
     
     /**
-     * @deprecated Since 2.7, to be removed from 2.8
+     * @deprecated Since 2.7, to be removed from 2.8, use {@link #getType()} instead.
      */
     @Deprecated
     public Class<?> getPropertyType() {
-        return (_accessorMethod != null) ? _accessorMethod.getReturnType() : _field.getType();
+        if (_accessorMethod != null) {
+            return _accessorMethod.getReturnType();
+        }
+        if (_field != null) {
+            return _field.getType();
+        }
+        return null;
     }
 
     /**
@@ -594,7 +600,7 @@ public class BeanPropertyWriter
      *
      * @return The property type, or null if not found.
      *
-     * @deprecated Since 2.7, to be removed from 2.8
+     * @deprecated Since 2.7, to be removed from 2.8, use {@link #getType()} instead.
      */
     @Deprecated
     public Type getGenericPropertyType() {

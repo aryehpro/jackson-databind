@@ -30,6 +30,11 @@ import com.fasterxml.jackson.databind.util.NameTransformer;
  * so that different sets of annotations can be supported, and support
  * plugged-in dynamically.
  *<p>
+ * Although default implementations are based on using annotations as the only
+ * (or at least main) information source, custom implementations are not limited
+ * in such a way, and in fact there is no expectation they should be. So the name
+ * is bit of misnomer; this is a general configuration introspection facility.
+ *<p>
  * NOTE: due to rapid addition of new methods (and changes to existing methods),
  * it is <b>strongly</b> recommended that custom implementations should not directly
  * extend this class, but rather extend {@link NopAnnotationIntrospector}.
@@ -282,6 +287,19 @@ public abstract class AnnotationIntrospector
      * @since 2.1
      */
     public Object findNamingStrategy(AnnotatedClass ac) { return null; }
+
+    /**
+     * Method used to check whether specified class defines a human-readable
+     * description to use for documentation.
+     * There are no further definitions for contents; for example, whether
+     * these may be marked up using HTML (or something like wiki format like Markup)
+     * is not defined.
+     * 
+     * @return Human-readable description, if any.
+     * 
+     * @since 2.7
+     */
+    public String findClassDescription(AnnotatedClass ac) { return null; }
 
     /*
     /**********************************************************
@@ -546,6 +564,19 @@ public abstract class AnnotationIntrospector
      */
     public JsonProperty.Access findPropertyAccess(Annotated ann) { return null; }
 
+    /**
+     * Method called in cases where a class has two methods eligible to be used
+     * for the same logical property, and default logic is not enough to figure
+     * out clear precedence. Introspector may try to choose one to use; or, if
+     * unable, return `null` to indicate it can not resolve the problem.
+     *
+     * @since 2.7
+     */
+    public AnnotatedMethod resolveSetterConflict(MapperConfig<?> config,
+            AnnotatedMethod setter1, AnnotatedMethod setter2) {
+        return null;
+    }
+
     /*
     /**********************************************************
     /* Serialization: general annotations
@@ -776,16 +807,22 @@ public abstract class AnnotationIntrospector
         
         // Ok: start by refining the main type itself; common to all types
         Class<?> serClass = findSerializationType(a);
-        if ((serClass != null) && !type.hasRawClass(serClass)) {
-            try {
-                // 11-Oct-2015, tatu: For deser, we call `TypeFactory.constructSpecializedType()`,
-                //   may be needed here too in future?
-                type = tf.constructGeneralizedType(type, serClass);
-            } catch (IllegalArgumentException iae) {
-                throw new JsonMappingException(null,
-                        String.format("Failed to widen type %s with annotation (value %s), from '%s': %s",
-                                type, serClass.getName(), a.getName(), iae.getMessage()),
-                                iae);
+        if (serClass != null) {
+            if (type.hasRawClass(serClass)) {
+                // 30-Nov-2015, tatu: As per [databind#1023], need to allow forcing of
+                //    static typing this way
+                type = type.withStaticTyping();
+            } else {
+                try {
+                    // 11-Oct-2015, tatu: For deser, we call `TypeFactory.constructSpecializedType()`,
+                    //   may be needed here too in future?
+                    type = tf.constructGeneralizedType(type, serClass);
+                } catch (IllegalArgumentException iae) {
+                    throw new JsonMappingException(null,
+                            String.format("Failed to widen type %s with annotation (value %s), from '%s': %s",
+                                    type, serClass.getName(), a.getName(), iae.getMessage()),
+                                    iae);
+                }
             }
         }
         // Then further processing for container types
@@ -795,32 +832,40 @@ public abstract class AnnotationIntrospector
             JavaType keyType = type.getKeyType();
             Class<?> keyClass = findSerializationKeyType(a, keyType);
             if (keyClass != null) {
-                try {
-                    keyType = tf.constructGeneralizedType(keyType, keyClass);
-                    type = ((MapLikeType) type).withKeyType(keyType);
-                } catch (IllegalArgumentException iae) {
-                    throw new JsonMappingException(null,
-                            String.format("Failed to widen key type of %s with concrete-type annotation (value %s), from '%s': %s",
-                                    type, keyClass.getName(), a.getName(), iae.getMessage()),
-                                    iae);
+                if (keyType.hasRawClass(keyClass)) {
+                    keyType = keyType.withStaticTyping();
+                } else {
+                    try {
+                        keyType = tf.constructGeneralizedType(keyType, keyClass);
+                    } catch (IllegalArgumentException iae) {
+                        throw new JsonMappingException(null,
+                                String.format("Failed to widen key type of %s with concrete-type annotation (value %s), from '%s': %s",
+                                        type, keyClass.getName(), a.getName(), iae.getMessage()),
+                                        iae);
+                    }
                 }
+                type = ((MapLikeType) type).withKeyType(keyType);
             }
         }
 
         JavaType contentType = type.getContentType();
         if (contentType != null) { // collection[like], map[like], array, reference
             // And then value types for all containers:
-           Class<?> contentClass = findSerializationContentType(a, type.getContentType());
+           Class<?> contentClass = findSerializationContentType(a, contentType);
            if (contentClass != null) {
-               try {
-                   contentType = tf.constructGeneralizedType(contentType, contentClass);
-                   type = type.withContentType(contentType);
-               } catch (IllegalArgumentException iae) {
-                   throw new JsonMappingException(null,
-                           String.format("Failed to widen value type of %s with concrete-type annotation (value %s), from '%s': %s",
-                                   type, contentClass.getName(), a.getName(), iae.getMessage()),
-                                   iae);
+               if (contentType.hasRawClass(contentClass)) {
+                   contentType = contentType.withStaticTyping();
+               } else {
+                   try {
+                       contentType = tf.constructGeneralizedType(contentType, contentClass);
+                   } catch (IllegalArgumentException iae) {
+                       throw new JsonMappingException(null,
+                               String.format("Failed to widen value type of %s with concrete-type annotation (value %s), from '%s': %s",
+                                       type, contentClass.getName(), a.getName(), iae.getMessage()),
+                                       iae);
+                   }
                }
+               type = type.withContentType(contentType);
            }
         }
         return type;
@@ -1314,5 +1359,15 @@ public abstract class AnnotationIntrospector
      */
     protected boolean _hasAnnotation(Annotated annotated, Class<? extends Annotation> annoClass) {
         return annotated.hasAnnotation(annoClass);
+    }
+
+    /**
+     * Alternative lookup method that is used to see if annotation has at least one of
+     * annotations of types listed in second argument.
+     *
+     * @since 2.7
+     */
+    protected boolean _hasOneOf(Annotated annotated, Class<? extends Annotation>[] annoClasses) {
+        return annotated.hasOneOf(annoClasses);
     }
 }

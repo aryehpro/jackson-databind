@@ -86,14 +86,7 @@ public abstract class BasicSerializerFactory
         // Other discrete non-container types:
         // First, Date/Time zoo:
         concrete.put(Calendar.class.getName(), CalendarSerializer.instance);
-        DateSerializer dateSer = DateSerializer.instance;
-        concrete.put(java.util.Date.class.getName(), dateSer);
-        // note: timestamps are very similar to java.util.Date, thus serialized as such
-        concrete.put(java.sql.Timestamp.class.getName(), dateSer);
-        
-        // leave some of less commonly used ones as lazy, no point in proactive construction
-        concLazy.put(java.sql.Date.class.getName(), SqlDateSerializer.class);
-        concLazy.put(java.sql.Time.class.getName(), SqlTimeSerializer.class);
+        concrete.put(java.util.Date.class.getName(), DateSerializer.instance);
 
         // And then other standard non-structured JDK types
         for (Map.Entry<Class<?>,Object> en : StdJdkSerializers.all()) {
@@ -818,7 +811,11 @@ public abstract class BasicSerializerFactory
             return null;
         case NON_DEFAULT:
             // 19-Oct-2014, tatu: Not sure what this'd mean; so take it to mean "NON_EMPTY"...
-            incl = JsonInclude.Include.NON_EMPTY;
+            // 11-Nov-2015, tatu: With 2.6, we did indeed revert to "NON_EMPTY", but that did
+            //    not go well, so with 2.7, we'll do this instead...
+            //   But not 100% sure if we ought to call new `JsonSerializer.findDefaultValue()`;
+            //   to do that, would need to locate said serializer
+//            incl = JsonInclude.Include.NON_EMPTY;
             break;
         default:
             // all other modes actually good as is, unless we'll find better ways

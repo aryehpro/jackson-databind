@@ -4,7 +4,13 @@ Project: jackson-databind
 === Releases ===
 ------------------------------------------------------------------------
 
-2.7.0 (not yet released)
+2.7.1 (not yet released)
+
+#1079: Add back `TypeFactory.constructType(Type, Class)` as "deprecated" in 2.7.1
+#1083: Field in base class is not recognized, when using `@JsonType.defaultImpl`
+ (reported by Julian H)
+
+2.7.0 (10-Jan-2016)
 
 #76: Problem handling datatypes Recursive type parameters
  (reported by Aram K)
@@ -13,8 +19,17 @@ Project: jackson-databind
 #432: `StdValueInstantiator` unwraps exceptions, losing context
  (reported by Miles K)
 #497: Add new JsonInclude.Include feature to exclude maps after exclusion removes all elements
+#803: Allow use of `StdDateFormat.setLenient()`
+ (suggested by raj-ghodke@github)
 #819: Add support for setting `FormatFeature` via `ObjectReader`, `ObjectWriter`
+#857: Add support for java.beans.Transient (requires Java 7)
+ (suggested by Thomas M)
 #898: Add `ObjectMapper.getSerializerProviderInstance()`
+#905: Add support for `@ConstructorProperties` (requires Java 7)
+ (requested by Jonas K)
+#909: Rename PropertyNamingStrategy CAMEL_CASE_TO_LOWER_CASE_WITH_UNDERSCORES as SNAKE_CASE,
+   PASCAL_CASE_TO_CAMEL_CASE as UPPER_CAMEL_CASE
+ (suggested by marcottedan@github)
 #915: ObjectMapper default timezone is GMT, should be UTC
  (suggested by Infrag@github)
 #918: Add `MapperFeature.ALLOW_EXPLICIT_PROPERTY_RENAMING`
@@ -27,10 +42,26 @@ Project: jackson-databind
  (reported by adamjoeldavis@github)
 #948: Support leap seconds, any number of millisecond digits for ISO-8601 Dates.
  (contributed by Jesse W)
+#952: Revert non-empty handling of primitive numbers wrt `NON_EMPTY`; make
+  `NON_DEFAULT` use extended criteria
 #957: Merge `datatype-jdk7` stuff in (java.nio.file.Path handling)
 #959: Schema generation: consider active view, discard non-included properties
+#963: Add PropertyNameStrategy `KEBAB_CASE`
+ (requested by Daniel M)
+#978: ObjectMapper#canSerialize(Object.class) returns false even though FAIL_ON_EMPTY_BEANS is disabled
+ (reported by Shumpei A)
 #997: Add `MapperFeature.OVERRIDE_PUBLIC_ACCESS_MODIFIERS`
 #998: Allow use of `NON_DEFAULT` for POJOs without default constructor
+#1000: Add new mapping exception type for enums and UUIDs
+ (suggesed by natnan@github)
+#1010: Support for array delegator
+ (contributed by Hugo W)
+#1011: Change ObjectWriter::withAttributes() to take a Map with some kind of wildcard types
+ (suggested by David B)
+#1043: @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY) does not work on fields
+ (reported by fabiolaa@github)
+#1044: Add `AnnotationIntrospector.resolveSetterConflict(...)` to allow custom setter conflict resolution
+ (suggested by clydebarrow@github)
 - Make `JsonValueFormat` (self-)serializable, deserializable, to/from valid external
   value (as per JSON Schema spec)
 
@@ -38,13 +69,33 @@ INCOMPATIBILITIES:
 
 - While unlikely to be problematic, #959 above required an addition of `SerializerProvider`
   argument for `depositSchemaProperty()` method `BeanProperty` and `PropertyWriter` interfaces
+- JDK baseline now Java 7 (JDK 1.7), from Java 6/JDK 1.6
 
-2.6.4 (not yet released)
+2.6.5 (not yet released)
+
+#1052: Don't generate a spurious NullNode after parsing an embedded object
+ (reported by philipa@github)
+#1061: Problem with Object Id and Type Id as Wrapper Object (regression in 2.5.1)
+#1073: Add try-catch around `java.sql` type serializers
+ (suggested by claudemt@github)
+#1078: ObjectMapper.copy() still does not preserve _registeredModuleTypes
+ (reported by ajonkisz@github)
+
+2.6.4 (07-Dec-2015)
 
 #984: JsonStreamContexts are not build the same way for write.. and convert methods
  (reported by Antibrumm@github)
 #989: Deserialization from "{}" to java.lang.Object causes "out of END_OBJECT token" error
  (reported by Ievgen P)
+#1003: JsonTypeInfo.As.EXTERNAL_PROPERTY does not work with a Delegate
+ (reported by alexwen@github)
+#1005: Synthetic constructors confusing Jackson data binding
+ (reported by Jayson M)
+#1013: `@JsonUnwrapped` is not treated as assuming `@JsonProperty("")`
+ (reported by David B)
+#1036: Problem with case-insensitive deserialization
+ (repoted by Dmitry R)
+- Fix a minor problem with `@JsonNaming` not recognizing default value
 
 2.6.3 (12-Oct-2015)
 
@@ -173,7 +224,7 @@ INCOMPATIBILITIES:
 - Remove old cglib compatibility tests; cause problems in Eclipse
 - Add `withFilterId()` method in `JsonSerializer` (demote from `BeanSerializer`)
 
-2.5.5 (not released)
+2.5.5 (07-Dec-2015)
 
 #844: Using JsonCreator still causes invalid path references in JsonMappingException
  (reported by Ian B)

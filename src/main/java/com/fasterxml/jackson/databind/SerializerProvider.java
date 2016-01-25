@@ -6,9 +6,9 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.TimeZone;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.ObjectIdGenerator;
 import com.fasterxml.jackson.core.JsonGenerator;
-
 import com.fasterxml.jackson.databind.cfg.ContextAttributes;
 import com.fasterxml.jackson.databind.deser.ContextualDeserializer;
 import com.fasterxml.jackson.databind.introspect.Annotated;
@@ -341,6 +341,21 @@ public abstract class SerializerProvider
     @Deprecated
     public final Class<?> getSerializationView() { return _serializationView; }
 
+    @Override
+    public final boolean canOverrideAccessModifiers() {
+        return _config.canOverrideAccessModifiers();
+    }
+
+    @Override
+    public final boolean isEnabled(MapperFeature feature) {
+        return _config.isEnabled(feature);
+    }
+
+    @Override
+    public final JsonFormat.Value getDefaultPropertyFormat(Class<?> baseType) {
+        return _config.getDefaultPropertyFormat(baseType);
+    }
+    
     /**
      * Method for accessing default Locale to use: convenience method for
      *<pre>
@@ -1089,9 +1104,7 @@ public abstract class SerializerProvider
 
     protected void _reportIncompatibleRootType(Object value, JavaType rootType) throws IOException
     {
-        /* 07-Jan-2010, tatu: As per [JACKSON-456] better handle distinction between wrapper types,
-         *    primitives
-         */
+        // One special case: allow primitive/wrapper type coercion
         if (rootType.isPrimitive()) {
             Class<?> wrapperType = ClassUtil.wrapperType(rootType.getRawClass());
             // If it's just difference between wrapper, primitive, let it slide
@@ -1148,10 +1161,10 @@ public abstract class SerializerProvider
     protected JsonSerializer<Object> _createAndCacheUntypedSerializer(Class<?> rawType)
         throws JsonMappingException
     {
-        JavaType type = _config.constructType(rawType);
+        JavaType fullType = _config.constructType(rawType);
         JsonSerializer<Object> ser;
         try {
-            ser = _createUntypedSerializer(type);
+            ser = _createUntypedSerializer(fullType);
         } catch (IllegalArgumentException iae) {
             /* We better only expose checked exceptions, since those
              * are what caller is expected to handle
@@ -1160,7 +1173,8 @@ public abstract class SerializerProvider
         }
 
         if (ser != null) {
-            _serializerCache.addAndResolveNonTypedSerializer(type, ser, this);
+            // 21-Dec-2015, tatu: Best to cache for both raw and full-type key
+            _serializerCache.addAndResolveNonTypedSerializer(rawType, fullType, ser, this);
         }
         return ser;
     }
@@ -1179,6 +1193,7 @@ public abstract class SerializerProvider
         }
     
         if (ser != null) {
+            // 21-Dec-2015, tatu: Should we also cache using raw key?
             _serializerCache.addAndResolveNonTypedSerializer(type, ser, this);
         }
         return ser;

@@ -485,8 +485,8 @@ public class ObjectMapper
         // Default serializer factory is stateless, can just assign
         _serializerFactory = src._serializerFactory;
 
-        // as per [databind#922], make sure to copy registered modules as appropriate
-        Set<Object> reg = _registeredModuleTypes;
+        // as per [databind#922], [databind#1078] make sure to copy registered modules as appropriate
+        Set<Object> reg = src._registeredModuleTypes;
         if (reg == null) {
             _registeredModuleTypes = null;
         } else {
@@ -2157,56 +2157,72 @@ public class ObjectMapper
     }
 
     /**
+     * Convenience method, equivalent in function to:
+     *<pre>
+     *   readerFor(valueType).readValues(p);
+     *</pre>
+     *<p>
      * Method for reading sequence of Objects from parser stream.
      * Sequence can be either root-level "unwrapped" sequence (without surrounding
      * JSON array), or a sequence contained in a JSON Array.
-     * In either case {@link JsonParser} must point to the first token of
+     * In either case {@link JsonParser} <b>MUST</b> point to the first token of
      * the first element, OR not point to any token (in which case it is advanced
      * to the next token). This means, specifically, that for wrapped sequences,
-     * parser MUST NOT point to the surrounding <code>START_ARRAY</code> but rather
-     * to the token following it.
+     * parser MUST NOT point to the surrounding <code>START_ARRAY</code> (one that
+     * contains values to read) but rather to the token following it which is the first
+     * token of the first value to read.
      *<p>
      * Note that {@link ObjectReader} has more complete set of variants.
      */
     @Override
-    public <T> MappingIterator<T> readValues(JsonParser jp, ResolvedType valueType)
+    public <T> MappingIterator<T> readValues(JsonParser p, ResolvedType valueType)
         throws IOException, JsonProcessingException
     {
-        return readValues(jp, (JavaType) valueType);
+        return readValues(p, (JavaType) valueType);
     }
 
     /**
-     * Type-safe overloaded method, basically alias for {@link #readValues(JsonParser, ResolvedType)}.
+     * Convenience method, equivalent in function to:
+     *<pre>
+     *   readerFor(valueType).readValues(p);
+     *</pre>
+     *<p>
+     * Type-safe overload of {@link #readValues(JsonParser, ResolvedType)}.
      */
-    public <T> MappingIterator<T> readValues(JsonParser jp, JavaType valueType)
-            throws IOException, JsonProcessingException
+    public <T> MappingIterator<T> readValues(JsonParser p, JavaType valueType)
+        throws IOException, JsonProcessingException
     {
         DeserializationConfig config = getDeserializationConfig();
-        DeserializationContext ctxt = createDeserializationContext(jp, config);
+        DeserializationContext ctxt = createDeserializationContext(p, config);
         JsonDeserializer<?> deser = _findRootDeserializer(ctxt, valueType);
         // false -> do NOT close JsonParser (since caller passed it)
-        return new MappingIterator<T>(valueType, jp, ctxt, deser,
+        return new MappingIterator<T>(valueType, p, ctxt, deser,
                 false, null);
     }
 
     /**
-     * Type-safe overloaded method, basically alias for {@link #readValues(JsonParser, ResolvedType)}.
+     * Convenience method, equivalent in function to:
+     *<pre>
+     *   readerFor(valueType).readValues(p);
+     *</pre>
+     *<p>
+     * Type-safe overload of {@link #readValues(JsonParser, ResolvedType)}.
      */
     @Override
-    public <T> MappingIterator<T> readValues(JsonParser jp, Class<T> valueType)
+    public <T> MappingIterator<T> readValues(JsonParser p, Class<T> valueType)
         throws IOException, JsonProcessingException
     {
-        return readValues(jp, _typeFactory.constructType(valueType));
+        return readValues(p, _typeFactory.constructType(valueType));
     }
 
     /**
      * Method for reading sequence of Objects from parser stream.
      */
     @Override
-    public <T> MappingIterator<T> readValues(JsonParser jp, TypeReference<?> valueTypeRef)
+    public <T> MappingIterator<T> readValues(JsonParser p, TypeReference<?> valueTypeRef)
         throws IOException, JsonProcessingException
     {
-        return readValues(jp, _typeFactory.constructType(valueTypeRef));
+        return readValues(p, _typeFactory.constructType(valueTypeRef));
     }
     
     /*
@@ -3612,6 +3628,7 @@ public class ObjectMapper
         }
     }
 
+    @Deprecated // since 2.7, not used internally any more
     protected final void _configAndWriteValue(JsonGenerator g, Object value, Class<?> viewClass)
         throws IOException
     {
@@ -3645,7 +3662,7 @@ public class ObjectMapper
      * method is to be called right after serialization has been called
      */
     private final void _configAndWriteCloseable(JsonGenerator g, Object value, SerializationConfig cfg)
-        throws IOException, JsonGenerationException, JsonMappingException
+        throws IOException
     {
         Closeable toClose = (Closeable) value;
         try {
@@ -3657,9 +3674,7 @@ public class ObjectMapper
             toClose = null;
             tmpToClose.close();
         } finally {
-            /* Need to close both generator and value, as long as they haven't yet
-             * been closed
-             */
+            // Need to close both generator and value, as long as they haven't yet been closed
             if (g != null) {
                 // 04-Mar-2014, tatu: But! Let's try to prevent auto-closing of
                 //    structures, which typically causes more damage.
@@ -3681,7 +3696,7 @@ public class ObjectMapper
      * method is to be called right after serialization has been called
      */
     private final void _writeCloseableValue(JsonGenerator g, Object value, SerializationConfig cfg)
-        throws IOException, JsonGenerationException, JsonMappingException
+        throws IOException
     {
         Closeable toClose = (Closeable) value;
         try {

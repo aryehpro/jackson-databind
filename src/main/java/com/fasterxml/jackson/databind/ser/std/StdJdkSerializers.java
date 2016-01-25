@@ -8,7 +8,6 @@ import java.util.concurrent.atomic.*;
 import com.fasterxml.jackson.core.*;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.jsonFormatVisitors.JsonFormatVisitorWrapper;
-import com.fasterxml.jackson.databind.jsonFormatVisitors.JsonIntegerFormatVisitor;
 import com.fasterxml.jackson.databind.ser.BasicSerializerFactory;
 
 /**
@@ -38,13 +37,11 @@ public class StdJdkSerializers
         sers.put(java.util.regex.Pattern.class, sls);
         sers.put(Locale.class, sls);
 
-        sers.put(Locale.class, sls);
-
         // then atomic types (note: AtomicReference defined elsewhere)
         sers.put(AtomicBoolean.class, AtomicBooleanSerializer.class);
         sers.put(AtomicInteger.class, AtomicIntegerSerializer.class);
         sers.put(AtomicLong.class, AtomicLongSerializer.class);
-        
+
         // then other types that need specialized serializers
         sers.put(File.class, FileSerializer.class);
         sers.put(Class.class, ClassSerializer.class);
@@ -53,6 +50,19 @@ public class StdJdkSerializers
         sers.put(Void.class, NullSerializer.instance);
         sers.put(Void.TYPE, NullSerializer.instance);
 
+        // 09-Jan-2015, tatu: As per [databind#1073], let's try to guard against possibility
+        //   of some environments missing `java.sql.` types
+        try {
+            // note: timestamps are very similar to java.util.Date, thus serialized as such
+            sers.put(java.sql.Timestamp.class, DateSerializer.instance);
+    
+            // leave some of less commonly used ones as lazy, no point in proactive construction
+            sers.put(java.sql.Date.class, SqlDateSerializer.class);
+            sers.put(java.sql.Time.class, SqlTimeSerializer.class);
+        } catch (NoClassDefFoundError e) {
+            // nothing much we can do here; could log, but probably not useful for now.
+        }
+        
         return sers.entrySet();
     }
 
@@ -101,10 +111,7 @@ public class StdJdkSerializers
         @Override
         public void acceptJsonFormatVisitor(JsonFormatVisitorWrapper visitor, JavaType typeHint) throws JsonMappingException
         {
-            JsonIntegerFormatVisitor v2 = visitor.expectIntegerFormat(typeHint);
-            if (v2 != null) {
-                v2.numberType(JsonParser.NumberType.INT);
-            }
+            visitIntFormat(visitor, typeHint, JsonParser.NumberType.INT);
         }
     }
 
@@ -125,12 +132,9 @@ public class StdJdkSerializers
         
         @Override
         public void acceptJsonFormatVisitor(JsonFormatVisitorWrapper visitor, JavaType typeHint)
-                throws JsonMappingException
+            throws JsonMappingException
         {
-            JsonIntegerFormatVisitor v2 = visitor.expectIntegerFormat(typeHint);
-            if (v2 != null) {
-                v2.numberType(JsonParser.NumberType.LONG);
-            }
+            visitIntFormat(visitor, typeHint, JsonParser.NumberType.LONG);
         }
     }
 }

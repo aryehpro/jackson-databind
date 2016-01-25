@@ -8,7 +8,6 @@ import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.annotation.JacksonStdImpl;
 import com.fasterxml.jackson.databind.introspect.AnnotatedMember;
-import com.fasterxml.jackson.databind.jsonFormatVisitors.JsonArrayFormatVisitor;
 import com.fasterxml.jackson.databind.jsonFormatVisitors.JsonFormatVisitorWrapper;
 import com.fasterxml.jackson.databind.jsonFormatVisitors.JsonFormatTypes;
 import com.fasterxml.jackson.databind.jsontype.TypeSerializer;
@@ -87,7 +86,6 @@ public class StringArraySerializer
          *    and it may have overrides
          */
         JsonSerializer<?> ser = null;
-        Boolean unwrapSingle = null;
 
         // First: if we have a property, may have property-annotation overrides
         if (property != null) {
@@ -99,11 +97,11 @@ public class StringArraySerializer
                     ser = provider.serializerInstance(m, serDef);
                 }
             }
-            JsonFormat.Value format = property.findPropertyFormat(provider.getConfig(), String[].class);
-            if (format != null) {
-                unwrapSingle = format.getFeature(JsonFormat.Feature.WRITE_SINGLE_ELEM_ARRAYS_UNWRAPPED);
-            }
         }
+        // but since formats have both property overrides and global per-type defaults,
+        // need to do that separately
+        Boolean unwrapSingle = findFormatFeature(provider, property, String[].class,
+                JsonFormat.Feature.WRITE_SINGLE_ELEM_ARRAYS_UNWRAPPED);
         if (ser == null) {
             ser = _elementSerializer;
         }
@@ -218,11 +216,6 @@ public class StringArraySerializer
     @Override
     public void acceptJsonFormatVisitor(JsonFormatVisitorWrapper visitor, JavaType typeHint) throws JsonMappingException
     {
-        if (visitor != null) {
-            JsonArrayFormatVisitor v2 = visitor.expectArrayFormat(typeHint);
-            if (v2 != null) {
-                v2.itemsFormat(JsonFormatTypes.STRING);
-            }
-        }
+        visitArrayFormat(visitor, typeHint, JsonFormatTypes.STRING);
     }
 }

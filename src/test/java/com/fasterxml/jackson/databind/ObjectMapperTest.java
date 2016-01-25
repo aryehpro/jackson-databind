@@ -150,7 +150,7 @@ public class ObjectMapperTest extends BaseMapTest
         assertEquals(4, m._deserializationContext._cache.cachedDeserializersCount());
     }
     
-    // [Issue#28]: ObjectMapper.copy()
+    // [databind#28]: ObjectMapper.copy()
     public void testCopy() throws Exception
     {
         ObjectMapper m = new ObjectMapper();
@@ -242,13 +242,22 @@ public class ObjectMapperTest extends BaseMapTest
                 .writeValueAsString(input));
     }
     
-    // For [databind#703]
+    // For [databind#703], [databind#978]
     public void testNonSerializabilityOfObject()
     {
         ObjectMapper m = new ObjectMapper();
         assertFalse(m.canSerialize(Object.class));
-        // but this used to pass, incorrectly
+        // but this used to pass, incorrectly, second time around
         assertFalse(m.canSerialize(Object.class));
+
+        // [databind#978]: Different answer if empty Beans ARE allowed
+        m = new ObjectMapper();
+        m.disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
+        assertTrue(m.canSerialize(Object.class));
+        assertTrue(MAPPER.writer().without(SerializationFeature.FAIL_ON_EMPTY_BEANS)
+                .canSerialize(Object.class));
+        assertFalse(MAPPER.writer().with(SerializationFeature.FAIL_ON_EMPTY_BEANS)
+                .canSerialize(Object.class));
     }
 
     // for [databind#756]
@@ -271,5 +280,23 @@ public class ObjectMapperTest extends BaseMapTest
                 .findValueSerializer(Bean.class);
         assertNotNull(ser);
         assertEquals(Bean.class, ser.handledType());
+    }
+
+    // for [databind#1074]
+    public void testCopyOfParserFeatures() throws Exception
+    {
+        // ensure we have "fresh" instance to start with
+        ObjectMapper mapper = new ObjectMapper();
+        assertFalse(mapper.isEnabled(JsonParser.Feature.ALLOW_COMMENTS));
+        mapper.configure(JsonParser.Feature.ALLOW_COMMENTS, true);
+        assertTrue(mapper.isEnabled(JsonParser.Feature.ALLOW_COMMENTS));
+
+        ObjectMapper copy = mapper.copy();
+        assertTrue(copy.isEnabled(JsonParser.Feature.ALLOW_COMMENTS));
+
+        // also verify there's no back-linkage
+        copy.configure(JsonParser.Feature.ALLOW_COMMENTS, false);
+        assertFalse(copy.isEnabled(JsonParser.Feature.ALLOW_COMMENTS));
+        assertTrue(mapper.isEnabled(JsonParser.Feature.ALLOW_COMMENTS));
     }
 }

@@ -784,9 +784,8 @@ public class POJOPropertiesCollector
         for (POJOPropertyBuilder prop : props) {
             PropertyName fullName = prop.getFullName();
             String rename = null;
-            // As per [#428](https://github.com/FasterXML/jackson-databind/issues/428) need
-            // to skip renaming if property has explicitly defined name, unless feature
-            // is enabled
+            // As per [databind#428] need to skip renaming if property has
+            // explicitly defined name, unless feature  is enabled
             if (!prop.isExplicitlyNamed() || _config.isEnabled(MapperFeature.ALLOW_EXPLICIT_PROPERTY_RENAMING)) {
                 if (_forSerialization) {
                     if (prop.hasGetter()) {
@@ -983,8 +982,8 @@ public class POJOPropertiesCollector
     {
         POJOPropertyBuilder prop = props.get(implName);
         if (prop == null) {
-            prop = new POJOPropertyBuilder(PropertyName.construct(implName),
-                    _annotationIntrospector, _forSerialization);
+            prop = new POJOPropertyBuilder(_config, _annotationIntrospector, _forSerialization,
+                    PropertyName.construct(implName));
             props.put(implName, prop);
         }
         return prop;
@@ -1008,6 +1007,11 @@ public class POJOPropertiesCollector
                     +namingDef.getClass().getName()+"; expected type PropertyNamingStrategy or Class<PropertyNamingStrategy> instead");
         }
         Class<?> namingClass = (Class<?>)namingDef;
+        // 09-Nov-2015, tatu: Need to consider pseudo-value of STD, which means "use default"
+        if (namingClass == PropertyNamingStrategy.class) {
+            return null;
+        }
+        
         if (!PropertyNamingStrategy.class.isAssignableFrom(namingClass)) {
             throw new IllegalStateException("AnnotationIntrospector returned Class "
                     +namingClass.getName()+"; expected Class<PropertyNamingStrategy>");
